@@ -1,0 +1,15 @@
+{
+  "name": "distrilearn",
+  "version": "1.0.0",
+  "description": "A package for distributed learning using Tensorflow.js",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Christopher Wang",
+  "license": "ISC",
+  "dependencies": {
+    "@tensorflow/tfjs": "^1.2.8",
+    "ws": "^7.1.2"
+  }
+}
