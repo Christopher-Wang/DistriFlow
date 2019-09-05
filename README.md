@@ -35,11 +35,11 @@ The DistriModel is a class that wraps a tf.layers model to be distributed and tr
 + epochIDs: List<UUID>
 + microBatchIDs: List<UUID>
 + queuedMicroBatch: int (index of MicroBatches)
-+ microBatches: List<MicroBatchID>
++ microBatches: List<tf.Tensor>
 + incompletedMicroBatches: Set<MicroBatchID>
 + QueuedEpochs: int (index of Epoch)
 + Epochs: List<EpochID>
 + CompletedEpochs: Set<EpochID>
 + Dataset: tf.Dataset
 ```
-The DistriDataset is a wrapper class for a tf.Dataset to be distributed. 
+The DistriDataset is a wrapper class for a tf.Dataset to be distributed. Datasets are distributed via a first come first serve approach. 
