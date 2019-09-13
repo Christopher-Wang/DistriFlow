@@ -14,26 +14,29 @@ class DistriDataset{
 	}
 
 	next(){
-		//Get the next minibatch from the queue
-		minibatch = this.minibatchQueue.next();
-		if(minibatch.done){
-			//Check if there are no more incomplete minibatches for this epoch
-			if(this.incompleteMinibatches == 0){
-				this.queuedEpochs++;
-				//Check if last epoch
-				if(this.queuedEpochs >= this.numEpochs){
-					return {value: undefined, done: true };
-				}
-				else{
-					//Reset all minibatches
-					this.incompleteMinibatches = new Set(this.minibatchIDs);
-				}
+		if(incompleteMinibatches.size == 0){
+			this.queuedEpochs++;
+			if(this.queuedEpochs >= this.numEpochs){
+				return {value: undefined, done: true };
 			}
-			//Reset minibatchQueue
+			this.incompleteMinibatches = new Set(this.minibatchIDs);
 			this.minibatchQueue = this.incompleteMinibatches.values();
-			minibatch = this.minibatchQueue.next();
 		}
-		return {value: this.dataArray[minibatch], done: false }
+					
+		minibatchID = this.minibatchQueue.next();
+		next = {
+			value: {
+				'minibatchID': minibatchID,
+				'minibatch': this.dataArray[minibatchID],
+				'epochID': this.queuedEpochs
+			},
+			done: false
+		};
+		return this.next;
+	}
+
+	completeMinibatch(minibatchID){
+		return incompleteMinibatches.delete(minibatchID);
 	}
 
 	static async createDataset(dataset, numEpochs, minibatchSize){
@@ -49,9 +52,9 @@ class DistriDataset{
 test = async () => {
 	const a = tf.data.array([1, 2, 3, 4, 5, 6, 7, 8]);
 	d = await DistriDataset.createDataset(a, 10, 3);
-	for (q  d){
-		console.log(q);
-	}
+	q =  new Set([1, 2, 3])
+	console.log(q.delete(1))
+	console.log({"done":false})
 }
 
 test();
