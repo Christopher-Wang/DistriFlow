@@ -60,6 +60,7 @@ typings/
 # next.js build output
 .next
 
+# clean this crap
 **/node_modules/
 scripts/**/*.js
 coverage/
