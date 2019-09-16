@@ -1,11 +1,16 @@
 {
-  "name": "distrilearn",
+  "name": "distriflow-server",
   "version": "1.0.0",
-  "description": "A package for distributed learning using Tensorflow.js",
+  "description": "A utility package for DistriFlow",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Christopher-Wang/DistriFlow.git"
+  },
+  "keywords": [],
   "author": "Christopher Wang",
   "license": "ISC",
   "dependencies": {

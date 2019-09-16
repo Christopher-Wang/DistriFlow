@@ -1,0 +1,38 @@
+{
+  "name": "distriflow-test",
+  "version": "1.0.0",
+  "description": "A utility package for DistriFlow",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "ts-node node_modules/jasmine/bin/jasmine --config=jasmine.json",
+    "lint": "tslint -p . -t verbose"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Christopher-Wang/DistriFlow.git"
+  },
+  "keywords": [],
+  "author": "Christopher Wang",
+  "license": "ISC",
+  "dependencies": {
+    "@tensorflow/tfjs": "^1.2.9",
+    "@types/socket.io": "^2.1.2",
+    "@types/socket.io-client": "^1.4.32",
+    "@types/uuid": "^3.4.5",
+    "socket.io": "^2.2.0",
+    "socket.io-client": "^2.2.0",
+    "typescript": "^3.6.3",
+    "uuid": "^3.3.3"
+  },
+  "resolutions": {
+    "@types/webgl2": "0.0.5",
+    "@types/socket.io-client": "^1.4.32",
+    "socket.io-client": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/jasmine": "^3.4.0",
+    "jasmine": "^3.4.0",
+    "ts-node": "^8.3.0"
+  }
+}
