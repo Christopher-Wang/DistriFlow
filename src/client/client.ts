@@ -5,13 +5,13 @@ import * as uuid from 'uuid/v4';
 // tslint:disable-next-line:max-line-length
 import { ClientHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, Events, UploadMsg, serializeVars, DistributedCompileArgs, AsyncTfModel, DEFAULT_CLIENT_HYPERPARAMS, deserializeVar } from '../common/utils';
 import { DistributedClientModel, isDistributedClientModel, DistributedClientTfModel } from './models';
+import { getCookie, setCookie, addRows, sliceWithEmptyTensors, fromEvent } from './utils';
 
 // tslint:disable-next-line:no-angle-bracket-type-assertion no-any
 const socketio = (<any>socketProxy).default || socketProxy;
 const CONNECTION_TIMEOUT = 10 * 1000;
 const UPLOAD_TIMEOUT = 5 * 1000;
 const COOKIE_NAME = 'Distributed-learner-uuid';
-const YEAR_IN_MS = 365 * 24 * 60 * 60 * 1000;
 
 type CounterObj = {
 	[key: string]: number
@@ -27,33 +27,16 @@ export type DistributedClientConfig = {
 	sendMetrics?: boolean
 };
 
-/**
- * Distributed Learning Client library.
- *
- * Example usage with a tf.Model:
- * ```js
- * const model = await tf.loadModel('a-model.json');
- * const client = new Client('http://server.com', model);
- * await client.setup();
- * await client.DistributedUpdate(data.X, data.y);
- * ```
- * The server->client synchronisation happens transparently whenever the server
- * broadcasts weights.
- * The client->server syncs happen periodically after enough `DistributedUpdate`
- * calls occur.
- */
-export class Client {
-	private msg: DownloadMsg;
-	private model: DistributedClientModel;
-	private socket: SocketIOClient.Socket;
-	private versionCallbacks: VersionCallback[];
-	private uploadCallbacks: UploadCallback[];
-	private x: tf.Tensor;
-	private y: tf.Tensor;
-	private versionUpdateCounts: CounterObj;
-	private server: string|SocketCallback;
-	private verbose: boolean;
-	private sendMetrics: boolean;
+export abstract class AbstractClient{
+	protected msg: DownloadMsg;
+	protected model: DistributedClientModel;
+	protected socket: SocketIOClient.Socket;
+	protected versionCallbacks: VersionCallback[];
+	protected uploadCallbacks: UploadCallback[];
+	protected versionUpdateCounts: CounterObj;
+	protected server: string|SocketCallback;
+	protected verbose: boolean;
+	protected sendMetrics: boolean;
 	hyperparams: ClientHyperparams;
 	clientId: string;
 
@@ -115,6 +98,104 @@ export class Client {
 		this.uploadCallbacks.push(callback);
 	}
 
+	evaluate(x: tf.Tensor, y: tf.Tensor): number[] {
+		return this.model.evaluate(x, y);
+	}
+
+	predict(x: tf.Tensor): tf.Tensor {
+		return this.model.predict(x);
+	}
+
+	numUpdates(): number {
+		let numTotal = 0;
+		Object.keys(this.versionUpdateCounts).forEach(k => {
+			numTotal += this.versionUpdateCounts[k];
+		});
+		return numTotal;
+	}
+
+	numVersions(): number {
+		return Object.keys(this.versionUpdateCounts).length;
+	}
+
+	dispose(): void {
+		this.socket.disconnect();
+		this.log('Disconnected');
+	}
+
+	get inputShape(): number[] {
+		return this.model.inputShape;
+	}
+
+	get outputShape(): number[] {
+		return this.model.outputShape;
+	}
+
+	// tslint:disable-next-line:no-any
+	protected log(...args: any[]) {
+		if (this.verbose) {
+			console.log('Distributed Client:', ...args);
+		}
+	}
+
+	/**
+	 * Upload the current values of the tracked variables to the server
+	 * @return A promise that resolves when the server has recieved the variables
+	 */
+	protected async uploadVars(msg: UploadMsg): Promise<{}> {
+		const prom = new Promise((resolve, reject) => {
+			const rejectTimer =
+				setTimeout(() => reject(`uploadVars timed out`), UPLOAD_TIMEOUT);
+			this.socket.emit(Events.Upload, msg, () => {
+			clearTimeout(rejectTimer);
+			resolve();
+			});
+		});
+		return prom;
+	}
+
+	protected setVars(newVars: SerializedVariable[]) {
+		tf.tidy(() => {
+			this.model.setVars(newVars.map(v => deserializeVar(v)));
+		});
+	}
+
+	protected async connectTo(server: string|SocketCallback): Promise<DownloadMsg> {
+	if (typeof server === 'string') {
+		this.socket = socketio(server);
+	} else {
+		this.socket = server();
+	}
+	return fromEvent<DownloadMsg>(this.socket, Events.Download, CONNECTION_TIMEOUT);
+	}
+
+	protected async time(msg: string, action: () => Promise<void>) {
+		const t1 = new Date().getTime();
+		await action();
+		const t2 = new Date().getTime();
+		this.log(`${msg} took ${t2 - t1}ms`);
+	}
+}
+
+/**
+ * Distributed Learning Client library.
+ *
+ * Example usage with a tf.Model:
+ * ```js
+ * const model = await tf.loadModel('a-model.json');
+ * const client = new Client('http://server.com', model);
+ * await client.setup();
+ * await client.DistributedUpdate(data.X, data.y);
+ * ```
+ * The server->client synchronisation happens transparently whenever the server
+ * broadcasts weights.
+ * The client->server syncs happen periodically after enough `DistributedUpdate`
+ * calls occur.
+ */
+export class FederatedClient extends AbstractClient{
+	private x: tf.Tensor;
+	private y: tf.Tensor;
+
 	/**
 	 * Connect to a server, synchronise the variables to their initial values
 	 * @param serverURL: The URL of the server
@@ -143,14 +224,6 @@ export class Client {
 			this.versionUpdateCounts[newVersion] = 0;
 			this.versionCallbacks.forEach(cb => cb(oldVersion, newVersion));
 		});
-	}
-
-	/**
-	 * Disconnect from the server.
-	 */
-	public dispose(): void {
-		this.socket.disconnect();
-		this.log('Disconnected');
 	}
 
 	/**
@@ -235,10 +308,7 @@ export class Client {
 			});
 			this.uploadCallbacks.forEach(cb => cb(uploadMsg));
 			this.versionUpdateCounts[modelVersion] += 1;
-
-			// dispose of the examples we saw
-			// TODO: consider storing some examples longer-term and reusing them for
-			// updates for multiple versions, if session is long-lived.
+			
 			tf.dispose([xTrain, yTrain]);
 			const xRest = sliceWithEmptyTensors(this.x, examplesPerUpdate);
 			const yRest = sliceWithEmptyTensors(this.y, examplesPerUpdate);
@@ -247,35 +317,7 @@ export class Client {
 			this.y = yRest;
 		}
 	}
-
-	public evaluate(x: tf.Tensor, y: tf.Tensor): number[] {
-		return this.model.evaluate(x, y);
-	}
-
-	public predict(x: tf.Tensor): tf.Tensor {
-		return this.model.predict(x);
-	}
-
-	public get inputShape(): number[] {
-		return this.model.inputShape;
-	}
-
-	public get outputShape(): number[] {
-		return this.model.outputShape;
-	}
-
-	public numUpdates(): number {
-		let numTotal = 0;
-		Object.keys(this.versionUpdateCounts).forEach(k => {
-			numTotal += this.versionUpdateCounts[k];
-		});
-		return numTotal;
-	}
-
-	public numVersions(): number {
-		return Object.keys(this.versionUpdateCounts).length;
-	}
-
+	
 	public numExamples(): number {
 		return this.x.shape[0];
 	}
@@ -291,110 +333,4 @@ export class Client {
 	public numExamplesRemaining(): number {
 		return this.numExamplesPerUpdate() - this.numExamples();
 	}
-
-	/**
-	 * Upload the current values of the tracked variables to the server
-	 * @return A promise that resolves when the server has recieved the variables
-	 */
-	private async uploadVars(msg: UploadMsg): Promise<{}> {
-		const prom = new Promise((resolve, reject) => {
-			const rejectTimer =
-				setTimeout(() => reject(`uploadVars timed out`), UPLOAD_TIMEOUT);
-			this.socket.emit(Events.Upload, msg, () => {
-			clearTimeout(rejectTimer);
-			resolve();
-			});
-		});
-		return prom;
-	}
-
-	protected setVars(newVars: SerializedVariable[]) {
-		tf.tidy(() => {
-			this.model.setVars(newVars.map(v => deserializeVar(v)));
-		});
-	}
-
-	private async connectTo(server: string|SocketCallback): Promise<DownloadMsg> {
-	if (typeof server === 'string') {
-		this.socket = socketio(server);
-	} else {
-		this.socket = server();
-	}
-	return fromEvent<DownloadMsg>(this.socket, Events.Download, CONNECTION_TIMEOUT);
-	}
-
-	// tslint:disable-next-line:no-any
-	private log(...args: any[]) {
-		if (this.verbose) {
-			console.log('Distributed Client:', ...args);
-		}
-	}
-
-	private async time(msg: string, action: () => Promise<void>) {
-		const t1 = new Date().getTime();
-		await action();
-		const t2 = new Date().getTime();
-		this.log(`${msg} took ${t2 - t1}ms`);
-	}
-}
-
-async function fromEvent<T>(
-    emitter: SocketIOClient.Socket, eventName: string,
-    timeout: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-           const rejectTimer = setTimeout(
-               () => reject(`${eventName} event timed out`), timeout);
-           const listener = (evtArgs: T) => {
-             emitter.removeListener(eventName, listener);
-             clearTimeout(rejectTimer);
-
-             resolve(evtArgs);
-           };
-           emitter.on(eventName, listener);
-         }) as Promise<T>;
-}
-
-// TODO: remove once tfjs >= 0.12.5 is released
-function concatWithEmptyTensors(a: tf.Tensor, b: tf.Tensor) {
-	if (a.shape[0] === 0) {
-		return b.clone();
-	} else if (b.shape[0] === 0) {
-		return a.clone();
-	} else {
-		return a.concat(b);
-	}
-}
-
-function sliceWithEmptyTensors(a: tf.Tensor, begin: number, size?: number) {
-	if (begin >= a.shape[0]) {
-		return tf.tensor([], [0].concat(a.shape.slice(1)));
-	} else {
-		return a.slice(begin, size);
-	}
-}
-
-function addRows(existing: tf.Tensor, newEls: tf.Tensor, unitShape: number[]) {
-	if (tf.util.arraysEqual(newEls.shape, unitShape)) {
-		return tf.tidy(() => concatWithEmptyTensors(existing, tf.expandDims(newEls)));
-	} else {  // batch dimension
-		tf.util.assertShapesMatch(newEls.shape.slice(1), unitShape);
-		return tf.tidy(() => concatWithEmptyTensors(existing, newEls));
-	}
-}
-
-function getCookie(name: string) {
-	if (typeof document === 'undefined') {
-		return null;
-	}
-	const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
-	return v ? v[2] : null;
-}
-
-function setCookie(name: string, value: string) {
-	if (typeof document === 'undefined') {
-		return;
-	}
-	const d = new Date();
-	d.setTime(d.getTime() + YEAR_IN_MS);
-	document.cookie = name + '=' + value + ';path=/;expires=' + d.toUTCString();
 }

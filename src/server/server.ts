@@ -16,11 +16,14 @@
  */
 
 import * as tf from '@tensorflow/tfjs';
+import * as http from 'http';
+import * as https from 'https';
+import * as path from 'path';
+import * as io from 'socket.io';
 import {Server as IOServer} from 'socket.io';
 // tslint:disable-next-line:max-line-length
-import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, Events, UploadMsg, serializeVars, stackSerialized, deserializeVars, DistributedCompileArgs } from '../common/utils';
-import { DistributedModel, DistributedTfModel } from '../common/models';
-import { DistributedServerModel } from './models';
+import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, Events, UploadMsg, serializeVars, stackSerialized, deserializeVars, DistributedCompileArgs, AsyncTfModel } from '../common/utils';
+import { DistributedServerModel, isDistributedServerModel, DistributedServerTfModel } from './models';
 
 
 export type DistributedServerConfig = {
@@ -32,24 +35,6 @@ export type DistributedServerConfig = {
     verbose?: boolean
 };
 
-
-
-/**
- * Distributed Learning Server library.
- *
- * Example usage with a tf.Model:
- * ```js
- * const model = await tf.loadModel('file:///a/model.json');
- * const webServer = http.createServer();
- * const fedServer = new Server(webServer, model);
- * fedServer.setup().then(() => {
- *  webServer.listen(80);
- * });
- * ```
- *
- * The server aggregates model weight updates from clients and publishes new
- * versions of the model periodically to all clients.
- */
 export class AbstractServer {
     model: DistributedServerModel;
     clientHyperparams: ClientHyperparams;
@@ -79,11 +64,99 @@ export class AbstractServer {
     }
 
     /**
-     * Set up the Distributed learning server.
+     * Register a new callback to be invoked whenever the server updates the model
+     * version.
      *
-     * This mainly delegates to `DistributedServerModel.setup` but also performs
-     * any user-defined callbacks and initializes the websocket server.
+     * @param callback function to be called (w/ old and new version IDs)
      */
+    onNewVersion(callback: VersionCallback) {
+        this.versionCallbacks.push(callback);
+    }
+
+    /**
+     * Register a new callback to be invoked whenever the client uploads a new set
+     * of weights.
+     *
+     * @param callback function to be called (w/ client's upload msg)
+     */
+    onUpload(callback: UploadCallback) {
+        this.uploadCallbacks.push(callback);
+    }
+
+    protected async computeDownloadMsg(): Promise<DownloadMsg> {
+        return {
+            model: {
+            vars: await serializeVars(this.model.getVars()),
+            version: this.model.version,
+            },
+            hyperparams: this.clientHyperparams
+        };
+    }
+
+    // tslint:disable-next-line:no-any
+    protected log(...args: any[]) {
+        if (this.verbose) {
+            console.log('Distributed Server:', ...args);
+        }
+    }
+
+    protected async time(msg: string, action: () => Promise<void>) {
+        const t1 = new Date().getTime();
+        await action();
+        const t2 = new Date().getTime();
+        this.log(`${msg} took ${t2 - t1}ms`);
+    }
+
+    protected async performCallbacks(oldVersion?: string) {
+        await this.time('performing callbacks', async () => {
+            this.versionCallbacks.forEach(c => c(oldVersion, this.model.version));
+        });
+    }
+}
+
+
+/**
+ * Distributed Learning Server library.
+ *
+ * Example usage with a tf.Model:
+ * ```js
+ * const model = await tf.loadModel('file:///a/model.json');
+ * const webServer = http.createServer();
+ * const fedServer = new Server(webServer, model);
+ * fedServer.setup().then(() => {
+ *  webServer.listen(80);
+ * });
+ * ```
+ *
+ * The server aggregates model weight updates from clients and publishes new
+ * versions of the model periodically to all clients.
+ */
+export class FederatedServer extends AbstractServer {
+    constructor(server: http.Server|https.Server|io.Server, 
+        model: AsyncTfModel|DistributedServerModel, 
+        config: DistributedServerConfig) {
+        // Setup server
+        let ioServer = server;
+        if (server instanceof http.Server || server instanceof https.Server) {
+            ioServer = io(server);
+        }
+
+        // Setup model
+        let fedModel = model;
+        if (!isDistributedServerModel(model)) {
+            const defaultDir = path.resolve(`${process.cwd()}/saved-models`);
+            const modelDir = config.modelDir || defaultDir;
+            const compileConfig = config.modelCompileArgs || {};
+            fedModel = new DistributedServerTfModel(modelDir, model, compileConfig);
+        }
+
+        if (!config.verbose) {
+            config.verbose = (!!process.env.VERBOSE);
+        }
+
+        super(ioServer as io.Server, fedModel as DistributedServerModel, config);
+    }
+
     async setup() {
         await this.time('setting up model', async () => {
             await this.model.setup();
@@ -126,40 +199,6 @@ export class AbstractServer {
         return (numUpdates >= this.serverHyperparams.minUpdatesPerVersion);
     }
 
-    /**
-     * Register a new callback to be invoked whenever the server updates the model
-     * version.
-     *
-     * @param callback function to be called (w/ old and new version IDs)
-     */
-    onNewVersion(callback: VersionCallback) {
-        this.versionCallbacks.push(callback);
-    }
-
-    /**
-     * Register a new callback to be invoked whenever the client uploads a new set
-     * of weights.
-     *
-     * @param callback function to be called (w/ client's upload msg)
-     */
-    onUpload(callback: UploadCallback) {
-        this.uploadCallbacks.push(callback);
-    }
-
-    private async computeDownloadMsg(): Promise<DownloadMsg> {
-        return {
-            model: {
-            vars: await serializeVars(this.model.getVars()),
-            version: this.model.version,
-            },
-            hyperparams: this.clientHyperparams
-        };
-    }
-
-    // TODO: optionally clip updates by global norm
-    // TODO: implement median and trimmed mean aggregations
-    // TODO: optionally skip updates if validation loss increases
-    // TOOD: consider only updating once we achieve a certain number of _clients_
     private async updateModel() {
         this.updating = true;
         const oldVersion = this.model.version;
@@ -185,25 +224,5 @@ export class AbstractServer {
         this.numUpdates = 0;
         this.updating = false;
         this.performCallbacks(oldVersion);
-    }
-
-    // tslint:disable-next-line:no-any
-    private log(...args: any[]) {
-        if (this.verbose) {
-            console.log('Distributed Server:', ...args);
-        }
-    }
-
-    private async time(msg: string, action: () => Promise<void>) {
-        const t1 = new Date().getTime();
-        await action();
-        const t2 = new Date().getTime();
-        this.log(`${msg} took ${t2 - t1}ms`);
-    }
-
-    private async performCallbacks(oldVersion?: string) {
-        await this.time('performing callbacks', async () => {
-            this.versionCallbacks.forEach(c => c(oldVersion, this.model.version));
-        });
     }
 }
