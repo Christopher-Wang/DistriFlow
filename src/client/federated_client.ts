@@ -35,9 +35,11 @@ export class FederatedClient extends AbstractClient{
 		});
 		this.x = tf.tensor([], [0].concat(this.model.inputShape));
 		this.y = tf.tensor([], [0].concat(this.model.outputShape));
+
 		await this.time('Download weights from server', async () => {
 			this.msg = await this.connectTo(this.server);
 		});
+		
 		this.setVars(this.msg.model.vars);
 		const newVersion = this.modelVersion();
 		this.versionUpdateCounts[newVersion] = 0;

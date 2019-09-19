@@ -3,9 +3,9 @@ import * as socketProxy from 'socket.io-client';
 import * as uuid from 'uuid/v4';
 
 // tslint:disable-next-line:max-line-length
-import { ClientHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, Events, UploadMsg, serializeVars, DistributedCompileArgs, AsyncTfModel, DEFAULT_CLIENT_HYPERPARAMS, deserializeVar } from '../common/utils';
+import { ClientHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, Events, UploadMsg, DistributedCompileArgs, AsyncTfModel, deserializeVar } from '../common/utils';
 import { DistributedClientModel, isDistributedClientModel, DistributedClientTfModel } from './models';
-import { getCookie, setCookie, addRows, sliceWithEmptyTensors, fromEvent } from './utils';
+import { getCookie, setCookie, fromEvent } from './utils';
 
 // tslint:disable-next-line:no-angle-bracket-type-assertion no-any
 const socketio = (<any>socketProxy).default || socketProxy;

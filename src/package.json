@@ -1,0 +1,22 @@
+{
+  "name": "distriflow",
+  "version": "1.0.0",
+  "description": "An npm package for distributed machine learning using tensorflow.js",
+  "main": "index.ts",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Christopher-Wang/DistriFlow.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Christopher-Wang/DistriFlow/issues"
+  },
+  "homepage": "https://github.com/Christopher-Wang/DistriFlow#readme"
+}

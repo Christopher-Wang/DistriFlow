@@ -107,9 +107,15 @@ export type ModelMsg = {
 	vars: SerializedVariable[]
 };
 
+export type GradientMsg = {
+	version: string,
+	vars: SerializedVariable[]
+};
+
 export type UploadMsg = {
-	model: ModelMsg,
 	clientId: string,
+	model?: ModelMsg,
+	gradients?: GradientMsg,
 	metrics?: number[]
 };
 
@@ -130,11 +136,11 @@ export type DistributedCompileArgs = {
 };
 
 export type ClientHyperparams = {
-	batchSize?: number,          // batch size (usually not relevant)
-	learningRate?: number,       // step size
-	epochs?: number,             // number of steps
-	examplesPerUpdate?: number,  // min examples before fitting
-	weightNoiseStddev?: number   // how much noise to add to weights
+	batchSize?: number,          
+	learningRate?: number,       
+	epochs?: number,             
+	examplesPerUpdate?: number,  
+	weightNoiseStddev?: number
 };
 
 export type ServerHyperparams = {

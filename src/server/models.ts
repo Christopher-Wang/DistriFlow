@@ -65,10 +65,7 @@ export class DistributedServerInMemoryModel extends DistributedTfModel implement
 	version: string;
 
 	async setup() {
-		const isBrowser = tf.ENV.get('IS_BROWSER');
-		tf.ENV.set('IS_BROWSER', true);  // TODO: remove me in tfjs 0.12.5
 		await this.fetchInitial();
-		tf.ENV.set('IS_BROWSER', isBrowser);
 		await this.save();
 	}
 
