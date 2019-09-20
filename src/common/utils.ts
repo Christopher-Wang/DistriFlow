@@ -97,6 +97,8 @@ export type VersionCallback = (oldVersion: string, newVersion: string) => void;
 
 export type UploadCallback = (msg: UploadMsg) => void;
 
+export type PreprocessCallback = (msg: DataMsg) => DataMsg;
+
 export enum Events {
 	Download = 'downloadVars',
 	Upload = 'uploadVars',
@@ -112,6 +114,20 @@ export type GradientMsg = {
 	vars: SerializedVariable[]
 };
 
+export type DataMsg = {
+	batch: number,
+	epoch: number,
+	x: SerializedVariable,
+	y: SerializedVariable
+};
+
+export type Batch = {
+	batch: number,
+	epoch: number,
+	x: tf.Tensor,
+	y: tf.Tensor
+};
+
 export type UploadMsg = {
 	clientId: string,
 	model?: ModelMsg,
@@ -121,7 +137,8 @@ export type UploadMsg = {
 
 export type DownloadMsg = {
 	model: ModelMsg,
-	hyperparams: ClientHyperparams
+	hyperparams: ClientHyperparams,
+	data?: DataMsg
 };
 
 export type DistributedFitConfig = {
@@ -134,6 +151,12 @@ export type DistributedCompileArgs = {
 	loss?: string|LossOrMetricFn,
 	metrics?: string[]
 };
+
+export type DistributedDatasetConfig = {
+	epochs: number,
+	batchSize: number,
+	smallLastBatch?: boolean
+}
 
 export type ClientHyperparams = {
 	batchSize?: number,          
@@ -159,6 +182,12 @@ export const DEFAULT_CLIENT_HYPERPARAMS: ClientHyperparams = {
 export const DEFAULT_SERVER_HYPERPARAMS: ServerHyperparams = {
 	aggregation: 'mean',
 	minUpdatesPerVersion: 20
+};
+
+export const DEFAULT_DATASET_HYPERPARAMS: DistributedDatasetConfig = {
+	batchSize: 32,
+	epochs: 5,
+	smallLastBatch: false
 };
 
 // tslint:disable-next-line:no-any

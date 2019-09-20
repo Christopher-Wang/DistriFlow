@@ -17,7 +17,7 @@
 
 import {Server as IOServer} from 'socket.io';
 // tslint:disable-next-line:max-line-length
-import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, Events, UploadMsg, serializeVars, stackSerialized, deserializeVars, DistributedCompileArgs, AsyncTfModel } from '../common/utils';
+import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, serializeVars, DistributedCompileArgs} from '../common/utils';
 import { DistributedServerModel} from './models';
 
 
