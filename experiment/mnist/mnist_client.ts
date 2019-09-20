@@ -14,9 +14,6 @@ const io = socketIO(server);
 const mnistTransferLearningModelURL = 'https://storage.googleapis.com/tfjs-models/tfjs/mnist_transfer_cnn_v1/model.json';
 
 async function main() {
-    //console.log(loadMnist()['train']['imgs'].shape);
-    // await server.listen(3000);
-    
     let model = await tf.loadLayersModel(mnistTransferLearningModelURL);
     let fedclient = new FederatedClient('http://localhost:80', model, {});
     await fedclient.setup()
