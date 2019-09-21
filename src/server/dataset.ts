@@ -1,6 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import * as _ from 'underscore';
-import { Batch, DEFAULT_DATASET_HYPERPARAMS, DistributedDatasetConfig } from '../common';
+import { Batch, DEFAULT_DATASET_HYPERPARAMS, DistributedDatasetConfig, serializeVar, DataMsg, PreprocessCallback, UploadCallback } from '../common';
 
 export class DistributedDataset{
     x: tf.Tensor;
@@ -13,8 +13,10 @@ export class DistributedDataset{
     incompleteBatches: Set<number>;
     batchQueue: Iterator<number>;
     smallLastBatch: boolean;
-    xBatchShape: Array<number>;
-    yBatchShape: Array<number>;
+    xBatchShape: number[];
+    yBatchShape: number[];
+    preprocessCallbacks: PreprocessCallback[];
+    verbose: boolean;
 
     constructor(x: tf.Tensor, y: tf.Tensor, config: DistributedDatasetConfig){
         this.x = x;
@@ -34,6 +36,8 @@ export class DistributedDataset{
 
         this.xBatchShape[0] = this.batchSize;
         this.yBatchShape[0] = this.batchSize;
+
+        this.preprocessCallbacks = [];
     }
 
     public completeBatch(batch): boolean{
@@ -54,8 +58,10 @@ export class DistributedDataset{
             this.batchQueue = this.incompleteBatches.values();
             ({value, done} = this.batchQueue.next());
        }
+       let batch = this.getBatch(value);
+       batch = this.preprocess(batch);
        return {
-           value: this.getBatch(value),
+           value: batch,
            done: false
        };
     }
@@ -77,4 +83,27 @@ export class DistributedDataset{
             y: y
         }
     }
+
+    private preprocess(batch: Batch): Batch{
+        for (let preprocessCallback of this.preprocessCallbacks){
+            batch = preprocessCallback(batch);
+        }
+        return batch;
+    }
+
+    addPreprocessCallback(callback: PreprocessCallback) {
+        this.preprocessCallbacks.push(callback);
+    }
+}
+
+export async function batchToDataMSG(batch: Batch): Promise<DataMsg>{
+    let dataMSG = {
+        batch: batch.batch,
+        epoch: batch.epoch,
+        x: await serializeVar(batch.x),
+        y: await serializeVar(batch.y)
+    };
+    tf.dispose(batch.x);
+    tf.dispose(batch.y);
+    return dataMSG;
 }

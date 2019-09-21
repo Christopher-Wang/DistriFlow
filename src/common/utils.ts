@@ -110,7 +110,7 @@ export type VersionCallback = (oldVersion: string, newVersion: string) => void;
 
 export type UploadCallback = (msg: UploadMsg) => void;
 
-export type PreprocessCallback = (msg: DataMsg) => DataMsg;
+export type PreprocessCallback = (batch: Batch) => Batch;
 
 export enum Events {
 	Download = 'downloadVars',
@@ -145,6 +145,7 @@ export type UploadMsg = {
 	clientId: string,
 	model?: ModelMsg,
 	gradients?: GradientMsg,
+	batch?: number,
 	metrics?: number[]
 };
 

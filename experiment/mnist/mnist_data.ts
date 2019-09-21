@@ -89,7 +89,6 @@ async function main() {
 		dist_model.updateVars(deserializeVars(serializedGrads));
 		console.log(dist_model.evaluate(x, y));
 	}
-	console.log();
 
 	// const {value, grads} = tf.variableGrads(() => tf.losses.softmaxCrossEntropy(model.predictOnBatch(x), y).mean());
 	// let gradList = Object.keys(grads).map( function(value, key){ return grads[value] });
