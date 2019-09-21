@@ -2,7 +2,7 @@ import {tensor1d, tensor4d} from '@tensorflow/tfjs';
 import {readFileSync} from 'fs';
 import * as path from 'path';
 import { DistributedDataset } from '../../src/server/dataset';
-import { DEFAULT_DATASET_HYPERPARAMS } from '../../src';
+import { DEFAULT_DATASET_HYPERPARAMS, serializeVars, SerializedVariable, serializeVar, deserializeVars, DistributedTfModel } from '../../src';
 
 const TRAIN_DATA = {
 	imgs: path.resolve(__dirname, 'data/train-images-idx3-ubyte'),
@@ -60,22 +60,52 @@ export function loadMnist() {
 	};
 }
 
+function createDenseModel() {
+	const model = tf.sequential();
+	model.add(tf.layers.flatten({inputShape: [28, 28, 1]}));
+	model.add(tf.layers.dense({units: 10, activation: 'relu'}));
+	model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
+	return model;
+  }
+
+import * as tf from '@tensorflow/tfjs';
 async function main() {
 	let mnist = loadMnist();
 	let mnist_train = mnist['train'];
 	let mnist_val = mnist['val'];
 	let dist_dataset = new DistributedDataset(mnist_train['imgs'], mnist_train['labels'], DEFAULT_DATASET_HYPERPARAMS);
 	let batch = dist_dataset.next();
-	let i = 0;
-	while(!batch.done){
-		if(Math.random() > -0.5){
-			console.log(`Batch: ${batch.value.batch} Epoch: ${batch.value.epoch}`);
-			dist_dataset.completeBatch(batch.value.batch);
-			i++;
-		}	
-		batch = dist_dataset.next();
-	}
-	console.log(i);
-}
+	let model = createDenseModel();
+	let dist_model = new DistributedTfModel(model, {});
+	let x = batch.value.x;
+	let y = tf.oneHot(batch.value.y, 10);
+	
 
+
+	await dist_model.fetchInitial();
+	for(let i = 0; i < 10000; i++){
+		let grads = dist_model.getGrads(x, y);
+		let serializedGrads = await serializeVars(grads);
+		dist_model.updateVars(deserializeVars(serializedGrads));
+		console.log(dist_model.evaluate(x, y));
+	}
+	console.log();
+
+	// const {value, grads} = tf.variableGrads(() => tf.losses.softmaxCrossEntropy(model.predictOnBatch(x), y).mean());
+	// let gradList = Object.keys(grads).map( function(value, key){ return grads[value] });
+	// let p = await serializeVars(gradList);
+	// let q = deserializeVars(p);
+	// console.log(q)
+	
+	//let sgrads = serializeVars(grads)
+
+	// while(!batch.done){
+	// 	if(Math.random() > -0.5){
+	// 		console.log(`Batch: ${batch.value.batch} Epoch: ${batch.value.epoch}`);
+	// 		dist_dataset.completeBatch(batch.value.batch);
+	// 	}	
+	// 	batch = dist_dataset.next();
+	// }
+}
+// @ts-ignore
 main();

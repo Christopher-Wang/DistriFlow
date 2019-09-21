@@ -1,7 +1,8 @@
 import * as tf from '@tensorflow/tfjs';
+
 // tslint:disable-next-line:max-line-length
-import {ModelCompileArgs, Tensor} from '@tensorflow/tfjs';
-import {AsyncTfModel, fetchModel, DistributedFitConfig, DistributedCompileArgs, DEFAULT_CLIENT_HYPERPARAMS} from './utils';
+import {Tensor} from '@tensorflow/tfjs';
+import {AsyncTfModel, fetchModel, DistributedFitConfig, DistributedCompileArgs, DEFAULT_CLIENT_HYPERPARAMS, LossOrMetricFn, lossesMap, DEFAULT_DISTRIBUTED_COMPILE_ARGS} from './utils';
 
 export interface DistributedModel {
     /**
@@ -13,7 +14,7 @@ export interface DistributedModel {
      *
      * @return A `Promise` resolved when training is done.
      */
-    fit(x: Tensor, y: Tensor, config?: DistributedFitConfig): Promise<void>;
+    fit(x: tf.Tensor, y: tf.Tensor, config?: DistributedFitConfig): Promise<void>;
   
     /**
      * Makes predictions on input data.
@@ -22,7 +23,7 @@ export interface DistributedModel {
      *
      * @return model ouputs
      */
-    predict(x: Tensor): Tensor;
+    predict(x: tf.Tensor): tf.Tensor;
   
     /**
      * Evaluates performance on data.
@@ -32,7 +33,7 @@ export interface DistributedModel {
      *
      * @return An array of evaluation metrics.
      */
-    evaluate(x: Tensor, y: Tensor): number[];
+    evaluate(x: tf.Tensor, y: tf.Tensor): number[];
   
     /**
      * Gets the model's variables.
@@ -40,15 +41,30 @@ export interface DistributedModel {
      * @return A list of `tf.Variable`s or LayerVariables representing the model's
      * trainable weights.
      */
-    getVars(): Tensor[];
+    getVars(): tf.Tensor[];
   
     /**
      * Sets the model's variables to given values.
      *
      * @param vals An array of `tf.Tensor`s representing updated model weights
      */
-    setVars(vals: Tensor[]): void;
-  
+    setVars(vals: tf.Tensor[]): void;
+
+    /**
+     * Gets the model's gradients give an (x, y) batch
+     *
+     * @return A list of `tf.Tensors`s that are the gradients of the current
+     * model given an (x, y) batch
+     */
+    getGrads(x: tf.Tensor, y: tf.Tensor): tf.Tensor[];
+
+    /**
+     * Updates the model's variables given the gradients
+     *
+     * @param grads An array of `tf.Tensor`s representing the model's gradients
+     */
+    updateVars(grads: tf.Tensor[]): void;
+
     /**
      * Shape of model inputs (not including the batch dimension)
      */
@@ -62,35 +78,39 @@ export interface DistributedModel {
   
 export class DistributedTfModel implements DistributedModel {
     model: tf.LayersModel;
-    compileConfig: ModelCompileArgs;
+    learningRate: tf.Scalar;
+    loss:  string;
+    lossFunction: LossOrMetricFn;
+    metrics: string[];
+    optimizer: string;
     private _initialModel: AsyncTfModel;
 
-    constructor(initialModel?: AsyncTfModel, config?: DistributedCompileArgs) {
+    constructor(initialModel: AsyncTfModel, config?: DistributedCompileArgs) {
         this._initialModel = initialModel;
-        this.compileConfig = {
-        loss: config.loss || 'categoricalCrossentropy',
-        metrics: config.metrics || ['accuracy'],
-        optimizer: 'sgd'
-        };
+        this.loss = config.loss || DEFAULT_DISTRIBUTED_COMPILE_ARGS.loss;
+        this.lossFunction = lossesMap[this.loss];
+        this.metrics = config.metrics || DEFAULT_DISTRIBUTED_COMPILE_ARGS.metrics;
+        this.optimizer = 'sgd';
+        this.learningRate = tf.scalar(config.learningRate || DEFAULT_DISTRIBUTED_COMPILE_ARGS.learningRate);
     }
 
     async fetchInitial() {
-        if (this._initialModel) {
         this.model = await fetchModel(this._initialModel);
-        this.model.compile(this.compileConfig);
-        } else {
-        throw new Error('no initial model provided!');
-        }
+        // TODO : Investigate model compiling in a distributed setting
+        this.model.compile({
+            loss: this.loss,
+            metrics: this.metrics,
+            optimizer: this.optimizer,
+        });
     }
 
     async fit(x: Tensor, y: Tensor, config?: DistributedFitConfig) {
         if (config.learningRate) {
-        (this.model.optimizer as tf.SGDOptimizer)
-            .setLearningRate(config.learningRate);
+            (this.model.optimizer as tf.SGDOptimizer).setLearningRate(config.learningRate);
         }
         await this.model.fit(x, y, {
-        epochs: config.epochs || DEFAULT_CLIENT_HYPERPARAMS.epochs,
-        batchSize: config.batchSize || DEFAULT_CLIENT_HYPERPARAMS.batchSize
+            epochs: config.epochs || DEFAULT_CLIENT_HYPERPARAMS.epochs,
+            batchSize: config.batchSize || DEFAULT_CLIENT_HYPERPARAMS.batchSize
         });
     }
 
@@ -116,8 +136,24 @@ export class DistributedTfModel implements DistributedModel {
     // TODO: throw friendly error if passed variable of wrong shape?
     setVars(vals: tf.Tensor[]) {
         for (let i = 0; i < vals.length; i++) {
-        this.model.trainableWeights[i].write(vals[i]);
+            this.model.trainableWeights[i].write(vals[i]);
         }
+    }
+
+    updateVars(grads: tf.Tensor[]) {
+        let vars = this.model.trainableWeights.map((v) => v);
+        vars.forEach((v, i) => {
+            v.write(tf.tidy(() => {
+                return v.read().sub(this.learningRate.mul(grads[i]))
+            }));
+        });
+    }
+
+    getGrads(x: tf.Tensor, y: tf.Tensor): tf.Tensor[]{
+         // @ts-ignore
+        const {value, grads} = tf.variableGrads(() => tf.losses.softmaxCrossEntropy(this.model.predictOnBatch(x), y).mean());
+        let gradList = Object.keys(grads).map( function(value, key){ return grads[value] });
+        return gradList;
     }
 
     get inputShape() {
@@ -136,6 +172,7 @@ export class DistributedDynamicModel implements DistributedModel {
     predict: (inputs: tf.Tensor) => tf.Tensor;
     loss: (labels: tf.Tensor, preds: tf.Tensor) => tf.Scalar;
     optimizer: tf.SGDOptimizer;
+    learningRate: tf.Scalar;
     inputShape: number[];
     outputShape: number[];
 
@@ -149,6 +186,7 @@ export class DistributedDynamicModel implements DistributedModel {
         this.predict = args.predict;
         this.loss = args.loss;
         this.optimizer = tf.train.sgd(DEFAULT_CLIENT_HYPERPARAMS.learningRate);
+        this.learningRate = tf.scalar(DEFAULT_CLIENT_HYPERPARAMS.learningRate);
         this.inputShape = args.inputShape;
         this.outputShape = args.outputShape;
     }
@@ -160,12 +198,12 @@ export class DistributedDynamicModel implements DistributedModel {
     async fit(x: tf.Tensor, y: tf.Tensor, config?: DistributedFitConfig):
         Promise<void> {
         if (config.learningRate) {
-        this.optimizer.setLearningRate(config.learningRate);
+            this.optimizer.setLearningRate(config.learningRate);
         }
         const epochs = (config && config.epochs) || 1;
         for (let i = 0; i < epochs; i++) {
-        const ret = this.optimizer.minimize(() => this.loss(y, this.predict(x)));
-        tf.dispose(ret);
+            const ret = this.optimizer.minimize(() => this.loss(y, this.predict(x)));
+            tf.dispose(ret);
         }
     }
 
@@ -179,7 +217,19 @@ export class DistributedDynamicModel implements DistributedModel {
 
     setVars(vals: tf.Tensor[]) {
         this.vars.forEach((v, i) => {
-        v.assign(vals[i]);
+            v.assign(vals[i]);
         });
+    }
+
+    updateVars(grads: tf.Tensor[]) {
+        this.vars.forEach((v, i) => {
+            v.assign(tf.tidy(() => v.add(-this.learningRate.mul(grads[i]))));
+        });
+    }
+
+    getGrads(x: tf.Tensor, y: tf.Tensor): tf.Tensor[]{
+        const {value, grads} = tf.variableGrads(() => this.loss(y, this.predict(x)).mean());
+        let gradList = Object.keys(grads).map( function(value, key){ return grads[value] });
+        return gradList;
     }
 }

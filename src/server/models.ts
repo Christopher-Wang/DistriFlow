@@ -141,7 +141,11 @@ export class DistributedServerTfModel extends DistributedTfModel implements Dist
 		const url = `file://${this.saveDir}/${version}/model.json`;
 		this.version = version;
 		this.model = await tf.loadLayersModel(url);
-		this.model.compile(this.compileConfig);
+		this.model.compile({
+			loss: this.loss,
+			metrics: this.metrics,
+			optimizer: this.optimizer,
+		});
 		await forceSymlink(`${this.saveDir}/${version}`, `${this.saveDir}/current`);
 	}
 }

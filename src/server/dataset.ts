@@ -21,7 +21,7 @@ export class DistributedDataset{
         this.y = y;
 
         this.epochs = config.epochs || DEFAULT_DATASET_HYPERPARAMS.epochs;
-        this.batchSize = config.epochs || DEFAULT_DATASET_HYPERPARAMS.batchSize;
+        this.batchSize = config.batchSize || DEFAULT_DATASET_HYPERPARAMS.batchSize;
         this.smallLastBatch = config.smallLastBatch || DEFAULT_DATASET_HYPERPARAMS.smallLastBatch;
 
         this.epoch = 0;

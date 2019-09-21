@@ -16,6 +16,19 @@ export const dtypeToTypedArrayCtor: {[index: string]:any} = {
 	'bool': Uint8Array
 };
 
+export const lossesMap: {[index: string]: LossOrMetricFn} = {
+	absoluteDifference : tf.losses.absoluteDifference,
+	computeWeightedLoss: tf.losses.computeWeightedLoss,
+	// TODO Investigate cosineDistance function signature as a loss function
+	// cosineDistance: tf.losses.cosineDistance,
+	hingeLoss: tf.losses.hingeLoss,
+	huberLoss: tf.losses.huberLoss,
+	logLoss: tf.losses.logLoss,
+	meanSquaredError: tf.losses.meanSquaredError,
+	sigmoidCrossEntropy: tf.losses.sigmoidCrossEntropy,
+	softmaxCrossEntropy: tf.losses.softmaxCrossEntropy,
+}
+
 export async function serializeVar(variable: tf.Tensor): Promise<SerializedVariable> {
 	const data = await variable.data();
 	// small TypedArrays are views into a larger buffer
@@ -148,7 +161,8 @@ export type DistributedFitConfig = {
 };
 
 export type DistributedCompileArgs = {
-	loss?: string|LossOrMetricFn,
+	loss?: string,
+	learningRate?: number,
 	metrics?: string[]
 };
 
@@ -189,6 +203,12 @@ export const DEFAULT_DATASET_HYPERPARAMS: DistributedDatasetConfig = {
 	epochs: 5,
 	smallLastBatch: false
 };
+
+export const DEFAULT_DISTRIBUTED_COMPILE_ARGS: DistributedCompileArgs = {
+	loss: 'meanSquaredError',
+	learningRate: 0.001,
+	metrics: ['accuracy']
+}
 
 // tslint:disable-next-line:no-any
 function override(defaults: any, choices: any) {
