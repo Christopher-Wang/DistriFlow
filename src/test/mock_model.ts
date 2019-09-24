@@ -1,43 +1,46 @@
 import {Tensor, Variable} from '@tensorflow/tfjs';
 import {DistributedClientModel} from '../client';
-import {DistributedFitConfig} from '../common'
 import {DistributedServerModel} from '../server';
 
 export class MockModel implements DistributedServerModel, DistributedClientModel {
-  isDistributedClientModel = true;
-  isDistributedServerModel = true;
-  inputShape = [1];
-  outputShape = [1];
-  vars: Variable[];
-  version: string;
+	isDistributedClientModel = true;
+	isDistributedServerModel = true;
+	inputShape = [1];
+	outputShape = [1];
+	vars: Variable[];
+	version: string;
 
-  constructor(vars: Variable[]) {
-    this.vars = vars;
-  }
+	constructor(vars: Variable[]) {
+		this.vars = vars;
+	}
 
-  async fit(x: Tensor, y: Tensor, config?: DistributedFitConfig) {}
+	async setup() {}
 
-  async setup() {}
+	async save() {
+		this.version = new Date().getTime().toString();
+	}
 
-  async save() {
-    this.version = new Date().getTime().toString();
-  }
+	fit(x: Tensor, y: Tensor) {
+		return this.vars;
+	}
 
-  setVars(vars: Tensor[]) {
-    for (let i = 0; i < this.vars.length; i++) {
-      this.vars[i].assign(vars[i]);
-    }
-  }
+	update(gradients: Tensor[]) {}
 
-  getVars(): Tensor[] {
-    return this.vars;
-  }
+	setVars(vars: Tensor[]) {
+		for (let i = 0; i < this.vars.length; i++) {
+			this.vars[i].assign(vars[i]);
+		}
+	}
 
-  predict(x: Tensor) {
-    return x;
-  }
+	getVars(): Tensor[] {
+		return this.vars;
+	}
 
-  evaluate(x: Tensor, y: Tensor) {
-    return [0];
-  }
+	predict(x: Tensor) {
+		return x;
+	}
+
+	evaluate(x: Tensor, y: Tensor) {
+		return [0];
+	}
 }

@@ -143,7 +143,6 @@ export type Batch = {
 
 export type UploadMsg = {
 	clientId: string,
-	model?: ModelMsg,
 	gradients?: GradientMsg,
 	batch?: number,
 	metrics?: number[]
@@ -155,11 +154,6 @@ export type DownloadMsg = {
 	data?: DataMsg
 };
 
-export type DistributedFitConfig = {
-	learningRate?: number,
-	epochs?: number,
-	batchSize?: number
-};
 
 export type DistributedCompileArgs = {
 	loss?: string,
