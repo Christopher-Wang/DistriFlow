@@ -100,13 +100,13 @@ export class AsynchronousSGDServer extends AbstractServer {
     private async updateModel(grads?: GradientMsg) {
         this.updating = true;
         const oldVersion = this.model.version;
-        let gradsList = deserializeVars(grads.vars)
+        let gradients = deserializeVars(grads.vars)
 
         await this.time('computing new weights', async () => {
-            this.model.updateVars(gradsList);
+            this.model.update(gradients);
         });
 
-        tf.dispose(gradsList);
+        tf.dispose(gradients);
         this.model.save();
         this.updating = false;
         this.performCallbacks(oldVersion);
