@@ -83,9 +83,9 @@ describe('Server-to-client API', () => {
 		clientVars[0].assign(tf.tensor([2, 2, 2, 2], [2, 2]));
 		clientVars[1].assign(tf.tensor([1, 2, 3, 4], [1, 4]));
 		await client.DistributedUpdate(dummyX1, dummyY1);
-
 		clientVars[0].assign(tf.tensor([1, 1, 1, 1], [2, 2]));
 		clientVars[1].assign(tf.tensor([5, 4, 3, 1], [1, 4]));
 		await client.DistributedUpdate(dummyX3, dummyY3);
+		
 	});
 });

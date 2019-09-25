@@ -154,7 +154,6 @@ export type DownloadMsg = {
 	data?: DataMsg
 };
 
-
 export type DistributedCompileArgs = {
 	loss?: string,
 	learningRate?: number,
@@ -171,8 +170,7 @@ export type ClientHyperparams = {
 	batchSize?: number,          
 	learningRate?: number,       
 	epochs?: number,             
-	examplesPerUpdate?: number,  
-	weightNoiseStddev?: number
+	examplesPerUpdate?: number
 };
 
 export type ServerHyperparams = {
@@ -184,8 +182,7 @@ export const DEFAULT_CLIENT_HYPERPARAMS: ClientHyperparams = {
 	examplesPerUpdate: 5,
 	learningRate: 0.001,
 	batchSize: 32,
-	epochs: 5,
-	weightNoiseStddev: 0
+	epochs: 5
 };
 
 export const DEFAULT_SERVER_HYPERPARAMS: ServerHyperparams = {

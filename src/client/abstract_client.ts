@@ -37,6 +37,7 @@ export abstract class AbstractClient{
 	protected server: string|SocketCallback;
 	protected verbose: boolean;
 	protected sendMetrics: boolean;
+	protected grads: tf.Tensor[];
 	hyperparams: ClientHyperparams;
 	clientId: string;
 

@@ -62,24 +62,24 @@ export class FederatedServer extends AbstractServer {
             this.log(`connection: ${this.numClients} clients`);
 
             socket.on('disconnect', () => {
-            this.numClients--;
-            this.log(`disconnection: ${this.numClients} clients`);
+                this.numClients--;
+                this.log(`disconnection: ${this.numClients} clients`);
             });
 
             socket.emit(Events.Download, this.downloadMsg);
 
             socket.on(Events.Upload, async (msg: UploadMsg, ack) => {
             ack(true);
-            if (msg.model.version === this.model.version && !this.updating) {
+            if (msg.gradients.version === this.model.version && !this.updating) {
                 this.log(`new update from ${msg.clientId}`);
-                this.updates.push(msg.model.vars);
+                this.updates.push(msg.gradients.vars);
                 this.numUpdates++;
                 await this.time('upload callbacks', async () => {
-                this.uploadCallbacks.forEach(c => c(msg));
+                    this.uploadCallbacks.forEach(c => c(msg));
                 });
                 if (this.shouldUpdate()) {
                 await this.updateModel();
-                this.server.sockets.emit(Events.Download, this.downloadMsg);
+                    this.server.sockets.emit(Events.Download, this.downloadMsg);
                 }
             }
             });
@@ -97,17 +97,17 @@ export class FederatedServer extends AbstractServer {
         const aggregation = this.serverHyperparams.aggregation;
 
         await this.time('computing new weights', async () => {
-            const newWeights = tf.tidy(() => {
-            const stacked = stackSerialized(this.updates);
-            const updates = deserializeVars(stacked);
-            if (aggregation === 'mean') {
-                return updates.map(update => update.mean(0));
-            } else {
-                throw new Error(`unsupported aggregation ${aggregation}`);
-            }
-            });
-            this.model.setVars(newWeights);
-            tf.dispose(newWeights);
+            const newgrads = tf.tidy(() => {
+                    const stacked = stackSerialized(this.updates);
+                    const updates = deserializeVars(stacked);
+                    if (aggregation === 'mean') {
+                        return updates.map(update => update.mean(0));
+                    } else {
+                        throw new Error(`unsupported aggregation ${aggregation}`);
+                    }
+                });
+            this.model.update(newgrads);
+            tf.dispose(newgrads);
         });
 
         this.model.save();

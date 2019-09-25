@@ -3,6 +3,7 @@ import * as tf from '@tensorflow/tfjs';
 import { AbstractClient} from "./abstract_client";
 import { addRows, sliceWithEmptyTensors } from "./utils";
 import { Events, DownloadMsg, SerializedVariable, serializeVars, UploadMsg, DEFAULT_CLIENT_HYPERPARAMS } from "../common";
+import { gradients } from '@tensorflow/tfjs-layers/dist/variables';
 
 /**
  * Distributed Learning Client library.
@@ -75,6 +76,8 @@ export class FederatedClient extends AbstractClient{
 		this.x = xNew;
 		this.y = yNew;
 
+
+		// TODO : Investigate if this kind of interation is intended behavior of federated learning
 		// repeatedly, for as many iterations as we have batches of examples:
 		const examplesPerUpdate = this.hyperparam('examplesPerUpdate');
 		while (this.x.shape[0] >= examplesPerUpdate) {
@@ -84,11 +87,6 @@ export class FederatedClient extends AbstractClient{
 			// grab the right number of examples
 			const xTrain = sliceWithEmptyTensors(this.x, 0, examplesPerUpdate);
 			const yTrain = sliceWithEmptyTensors(this.y, 0, examplesPerUpdate);
-			const fitConfig = {
-				epochs: this.hyperparam('epochs'),
-				batchSize: this.hyperparam('batchSize'),
-				learningRate: this.hyperparam('learningRate')
-			};
 
 			// optionally compute evaluation metrics for them
 			let metrics = null;
@@ -99,45 +97,34 @@ export class FederatedClient extends AbstractClient{
 			// fit the model for the specified # of steps
 			await this.time('Fit model', async () => {
 				try {
-					await this.model.fit(xTrain, yTrain, fitConfig);
+					this.grads = this.model.fit(xTrain, yTrain);
 				} catch (err) {
 					console.error(err);
 					throw err;
 				}
 			});
-
-			// serialize, possibly adding noise
-			const stdDev = this.hyperparam('weightNoiseStddev');
-			let newVars: SerializedVariable[];
-			if (stdDev) {
-				const newTensors = tf.tidy(() => {
-					return this.model.getVars().map(v => {
-						return v.add(tf.randomNormal(v.shape, 0, stdDev));
-					});
-				});
-				newVars = await serializeVars(newTensors);
-				tf.dispose(newTensors);
-			} else {
-				newVars = await serializeVars(this.model.getVars());
-			}
-
-			// revert our model back to its original weights
-			this.setVars(this.msg.model.vars);
+			
+			//Serialize and dispose the gradients
+			let gradients: SerializedVariable[] = await serializeVars(this.grads);
+			// TODO : Investigate gradient memory leak, this is for the test
+			//tf.dispose(this.grads);
 
 			// upload the updates to the server
 			const uploadMsg: UploadMsg = {
-				model: {version: modelVersion, vars: newVars},
+				gradients: {version: modelVersion, vars: gradients},
 				clientId: this.clientId,
 			};
+
 			if (this.sendMetrics) {
 				uploadMsg.metrics = metrics;
 			}
+
 			await this.time('Upload weights to server', async () => {
 				await this.uploadVars(uploadMsg);
 			});
+
 			this.uploadCallbacks.forEach(cb => cb(uploadMsg));
 			this.versionUpdateCounts[modelVersion] += 1;
-			
 			tf.dispose([xTrain, yTrain]);
 			const xRest = sliceWithEmptyTensors(this.x, examplesPerUpdate);
 			const yRest = sliceWithEmptyTensors(this.y, examplesPerUpdate);
@@ -151,7 +138,7 @@ export class FederatedClient extends AbstractClient{
 		return this.x.shape[0];
 	}
 
-	private hyperparam(key: 'batchSize'|'learningRate'|'epochs'|'examplesPerUpdate'|'weightNoiseStddev'): number {
+	private hyperparam(key: 'batchSize'|'learningRate'|'epochs'|'examplesPerUpdate'): number {
 		return (this.hyperparams[key] || this.msg.hyperparams[key] || DEFAULT_CLIENT_HYPERPARAMS[key]);
 	}
 
