@@ -17,7 +17,7 @@
 
 import {Server as IOServer} from 'socket.io';
 // tslint:disable-next-line:max-line-length
-import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, serializeVars, DistributedCompileArgs} from '../common/utils';
+import { ClientHyperparams, ServerHyperparams, DownloadMsg, SerializedVariable, VersionCallback, UploadCallback, clientHyperparams, serverHyperparams, serializeVars, DistributedCompileArgs, UploadMsg} from '../common/utils';
 import { DistributedServerModel} from './models';
 
 
@@ -89,7 +89,7 @@ export class AbstractServer {
     }
 
     // tslint:disable-next-line:no-any
-    protected log(...args: any[]) {
+    log(...args: any[]) {
         if (this.verbose) {
             console.log('Distributed Server:', ...args);
         }
@@ -102,9 +102,15 @@ export class AbstractServer {
         this.log(`${msg} took ${t2 - t1}ms`);
     }
 
-    protected async performCallbacks(oldVersion?: string) {
+    protected async performVersionCallbacks(oldVersion?: string) {
         await this.time('performing callbacks', async () => {
             this.versionCallbacks.forEach(c => c(oldVersion, this.model.version));
+        });
+    }
+
+    protected async performUploadCallbacks(msg?: UploadMsg){
+        await this.time('upload callbacks', async () => {
+            this.uploadCallbacks.forEach(c => c(msg));
         });
     }
 }

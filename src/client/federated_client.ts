@@ -3,7 +3,6 @@ import * as tf from '@tensorflow/tfjs';
 import { AbstractClient} from "./abstract_client";
 import { addRows, sliceWithEmptyTensors } from "./utils";
 import { Events, DownloadMsg, SerializedVariable, serializeVars, UploadMsg, DEFAULT_CLIENT_HYPERPARAMS } from "../common";
-import { gradients } from '@tensorflow/tfjs-layers/dist/variables';
 
 /**
  * Distributed Learning Client library.
@@ -21,8 +20,6 @@ import { gradients } from '@tensorflow/tfjs-layers/dist/variables';
  * calls occur.
  */
 export class FederatedClient extends AbstractClient{
-	private x: tf.Tensor;
-	private y: tf.Tensor;
 
 	/**
 	 * Connect to a server, synchronise the variables to their initial values

@@ -55,7 +55,7 @@ export class FederatedServer extends AbstractServer {
         });
 
         this.downloadMsg = await this.computeDownloadMsg();
-        await this.performCallbacks();
+        await this.performVersionCallbacks();
 
         this.server.on('connection', (socket) => {
             this.numClients++;
@@ -74,9 +74,7 @@ export class FederatedServer extends AbstractServer {
                 this.log(`new update from ${msg.clientId}`);
                 this.updates.push(msg.gradients.vars);
                 this.numUpdates++;
-                await this.time('upload callbacks', async () => {
-                    this.uploadCallbacks.forEach(c => c(msg));
-                });
+                this.performUploadCallbacks();
                 if (this.shouldUpdate()) {
                 await this.updateModel();
                     this.server.sockets.emit(Events.Download, this.downloadMsg);
@@ -115,6 +113,6 @@ export class FederatedServer extends AbstractServer {
         this.updates = [];
         this.numUpdates = 0;
         this.updating = false;
-        this.performCallbacks(oldVersion);
+        this.performVersionCallbacks(oldVersion);
     }
 }

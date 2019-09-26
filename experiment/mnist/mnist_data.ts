@@ -60,35 +60,36 @@ export function loadMnist() {
 	};
 }
 
-function createDenseModel() {
-	const model = tf.sequential();
-	model.add(tf.layers.flatten({inputShape: [28, 28, 1]}));
-	model.add(tf.layers.dense({units: 10, activation: 'relu'}));
-	model.add(tf.layers.dense({units: 10, activation: 'softmax'}));
-	return model;
-  }
-
-import * as tf from '@tensorflow/tfjs';
-async function main() {
+export function loadDataset(): DistributedDataset{
 	let mnist = loadMnist();
 	let mnist_train = mnist['train'];
 	let mnist_val = mnist['val'];
-	let dist_dataset = new DistributedDataset(mnist_train['imgs'], mnist_train['labels'], DEFAULT_DATASET_HYPERPARAMS);
-	let batch = dist_dataset.next();
-	let model = createDenseModel();
-	let dist_model = new DistributedTfModel(model, {});
-	let x = batch.value.x;
-	let y = tf.oneHot(batch.value.y, 10);
+	// TODO : add preprocessing and validation
+	// let x = batch.value.x;
+	// let y = tf.oneHot(batch.value.y, 10);
+	let labels = tf.oneHot(mnist_train['labels'], 10);
+	return new DistributedDataset(mnist_train['imgs'], labels, DEFAULT_DATASET_HYPERPARAMS);
+}
+
+
+
+import * as tf from '@tensorflow/tfjs';
+async function main() {
+
+	// let batch = dist_dataset.next();
+	// let model = createDenseModel();
+	// let dist_model = new DistributedTfModel(model, {});
+
 	
 
 
-	await dist_model.fetchInitial();
-	for(let i = 0; i < 10000; i++){
-		let grads = dist_model.getGrads(x, y);
-		let serializedGrads = await serializeVars(grads);
-		dist_model.updateVars(deserializeVars(serializedGrads));
-		console.log(dist_model.evaluate(x, y));
-	}
+	// await dist_model.fetchInitial();
+	// for(let i = 0; i < 10000; i++){
+	// 	let grads = dist_model.fit(x, y);
+	// 	let serializedGrads = await serializeVars(grads);
+	// 	dist_model.update(deserializeVars(serializedGrads));
+	// 	console.log(dist_model.evaluate(x, y));
+	// }
 
 	// const {value, grads} = tf.variableGrads(() => tf.losses.softmaxCrossEntropy(model.predictOnBatch(x), y).mean());
 	// let gradList = Object.keys(grads).map( function(value, key){ return grads[value] });

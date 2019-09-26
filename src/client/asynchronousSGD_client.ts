@@ -2,7 +2,8 @@ import * as tf from '@tensorflow/tfjs';
 
 import { AbstractClient} from "./abstract_client";
 import { addRows, sliceWithEmptyTensors } from "./utils";
-import { Events, DownloadMsg, SerializedVariable, serializeVars, UploadMsg, DEFAULT_CLIENT_HYPERPARAMS } from "../common";
+import { Events, DownloadMsg, SerializedVariable, serializeVars, UploadMsg, DEFAULT_CLIENT_HYPERPARAMS, deserializeVar } from "../common";
+import { timingSafeEqual } from 'crypto';
 
 export class AsynchronousSGDClient extends AbstractClient{
 
@@ -19,12 +20,14 @@ export class AsynchronousSGDClient extends AbstractClient{
 
 		await this.time('Download weights from server', async () => {
 			this.msg = await this.connectTo(this.server);
+
+			this.setVars(this.msg.model.vars);
+			const newVersion = this.modelVersion();
+			this.versionUpdateCounts[newVersion] = 0;
+			this.versionCallbacks.forEach(cb => cb(null, newVersion));
+			this.DistributedUpdate();
 		});
 		
-		this.setVars(this.msg.model.vars);
-		const newVersion = this.modelVersion();
-		this.versionUpdateCounts[newVersion] = 0;
-		this.versionCallbacks.forEach(cb => cb(null, newVersion));
 
 		this.socket.on(Events.Download, (msg: DownloadMsg) => {
 			const oldVersion = this.modelVersion();
@@ -33,10 +36,50 @@ export class AsynchronousSGDClient extends AbstractClient{
 			this.setVars(msg.model.vars);
 			this.versionUpdateCounts[newVersion] = 0;
 			this.versionCallbacks.forEach(cb => cb(oldVersion, newVersion));
+			this.DistributedUpdate();
 		});
 	}
 
 	public async DistributedUpdate(): Promise<void> {
-        // TODO FINISH CLIENT
+		// save original ID (in case it changes during training/serialization)
+		const modelVersion = this.modelVersion();
+		this.x = deserializeVar(this.msg.data.x);
+		this.y = deserializeVar(this.msg.data.y);
+
+		// optionally compute evaluation metrics for them
+		let metrics = null;
+		if (this.sendMetrics) {
+			metrics = this.model.evaluate(this.x, this.y);
+		}
+
+		// fit the model for the specified # of steps
+		await this.time('Fit model', async () => {
+			try {
+				this.grads = this.model.fit(this.x, this.y);
+			} catch (err) {
+				console.error(err);
+				throw err;
+			}
+		});
+		
+		//Serialize and dispose the gradients
+		let gradients: SerializedVariable[] = await serializeVars(this.grads);
+		// TODO : Investigate gradient memory leak, this is for the test
+		//tf.dispose(this.grads);
+
+		// upload the updates to the server
+		const uploadMsg: UploadMsg = {
+			batch: this.msg.data.batch,
+			gradients: {version: modelVersion, vars: gradients},
+			clientId: this.clientId,
+		};
+
+		if (this.sendMetrics) {
+			uploadMsg.metrics = metrics;
+		}
+
+		await this.time('Upload weights to server', async () => {
+			await this.uploadVars(uploadMsg);
+		});
 	}
 }

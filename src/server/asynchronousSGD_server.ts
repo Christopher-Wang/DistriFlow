@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as io from 'socket.io';
 
 import { AbstractServer, DistributedServerModel, DistributedServerConfig, isDistributedServerModel, DistributedServerTfModel, DistributedDataset, batchToDataMSG } from ".";
-import { AsyncTfModel, Events, UploadMsg, stackSerialized, deserializeVars, DownloadMsg, serializeVars, DataMsg, SerializedVariable, GradientMsg } from "../common";
+import { AsyncTfModel, Events, UploadMsg, deserializeVars, DownloadMsg, serializeVars, DataMsg, GradientMsg } from "../common";
 
 /**
  * The server aggregates model weight updates from clients and publishes new
@@ -14,11 +14,10 @@ import { AsyncTfModel, Events, UploadMsg, stackSerialized, deserializeVars, Down
 export class AsynchronousSGDServer extends AbstractServer {
     dataset: DistributedDataset;
 
-
     constructor(server: http.Server|https.Server|io.Server, 
         model: AsyncTfModel|DistributedServerModel, 
-        config: DistributedServerConfig,
-        dataset: DistributedDataset) {
+        dataset: DistributedDataset,
+        config: DistributedServerConfig) {
         // Setup server
         let ioServer = server;
         if (server instanceof http.Server || server instanceof https.Server) {
@@ -60,7 +59,6 @@ export class AsynchronousSGDServer extends AbstractServer {
             let batch = this.dataset.next();
             if (batch.done){ return; }
             this.downloadMsg = await this.computeDownloadMsg(await batchToDataMSG(batch.value));
-            await this.performCallbacks();
             this.log(`epoch: ${batch.value.epoch} batch: ${batch.value.batch}`);
             socket.emit(Events.Download, this.downloadMsg);
 
@@ -69,9 +67,7 @@ export class AsynchronousSGDServer extends AbstractServer {
                 this.log(`new update from ${msg.clientId}`);
                 this.numUpdates++;
 
-                await this.time('upload callbacks', async () => {
-                    this.uploadCallbacks.forEach(c => c(msg));
-                });
+                this.performUploadCallbacks(msg)
 
                 this.dataset.completeBatch(msg.batch);
                 await this.updateModel(msg.gradients);
@@ -79,7 +75,6 @@ export class AsynchronousSGDServer extends AbstractServer {
                 let batch = this.dataset.next();
                 if (batch.done){ return; }
                 this.downloadMsg = await this.computeDownloadMsg(await batchToDataMSG(batch.value));
-                await this.performCallbacks();
                 this.log(`epoch: ${batch.value.epoch} batch: ${batch.value.batch}`);
                 this.server.sockets.emit(Events.Download, this.downloadMsg);
             });
@@ -109,6 +104,7 @@ export class AsynchronousSGDServer extends AbstractServer {
         tf.dispose(gradients);
         this.model.save();
         this.updating = false;
-        this.performCallbacks(oldVersion);
+        this.performVersionCallbacks(oldVersion);
     }
+
 }

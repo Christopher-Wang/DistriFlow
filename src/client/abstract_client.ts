@@ -38,6 +38,8 @@ export abstract class AbstractClient{
 	protected verbose: boolean;
 	protected sendMetrics: boolean;
 	protected grads: tf.Tensor[];
+	protected x: tf.Tensor;
+	protected y: tf.Tensor;
 	hyperparams: ClientHyperparams;
 	clientId: string;
 
